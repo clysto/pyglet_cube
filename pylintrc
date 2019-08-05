@@ -1,0 +1,12 @@
+[MESSAGES CONTROL]
+disable=bad-continuation
+
+[BASIC]
+bad-functions=map,filter,input  # don't builtin function names
+good-names=i,j,k,ex,Run,_,n,x,y,z,dx,dy,dz,dt  # variable names that are okay
+
+[TYPECHECK]
+# List of members which are set dynamically and missed by pylint inference
+# system, and so shouldn't trigger E1101 when accessed. Python regular
+# expressions are accepted.
+generated-members=pyglet.*
