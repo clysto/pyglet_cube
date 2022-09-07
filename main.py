@@ -1,7 +1,10 @@
 import math
+from turtle import right
+import numpy as np
 
 import pyglet
 from pyglet import gl, window
+from scipy.spatial.transform import Rotation as R
 
 
 def load_texture(file_name):
@@ -13,7 +16,7 @@ def load_texture(file_name):
 
 def make_textures(textures):
     result = {}
-    base = "assets/textures/blocks"
+    base = "assets/textures"
     faces = ("left", "right", "top", "bottom", "front", "back")
     for face in faces:
         file_name = textures.get(face, textures.get("side"))
@@ -21,31 +24,52 @@ def make_textures(textures):
     return result
 
 
-def get_vertices(x, y, z):
-    dx, dy, dz = x + 1, y + 1, z + 1
+def get_vertices(x, y, z, rotation):
+    yaw, pitch, roll = rotation
+
+    dx = 0.5
+    dy = 0.005
+    dz = 0.2
+
+    a = (-dx, -dy, dz)
+    b = (dx, -dy, dz)
+    c = (dx, dy, dz)
+    d = (-dx, dy, dz)
+    e = (-dx, -dy, -dz)
+    f = (dx, -dy, -dz)
+    g = (dx, dy, -dz)
+    h = (-dx, dy, -dz)
+
+    r = R.from_euler("zyx", [roll, yaw, pitch], degrees=True)
+    a, b, c, d, e, f, g, h = r.apply([a, b, c, d, e, f, g, h])
+
     return [
-        (x, y, z, x, y, dz, x, dy, dz, x, dy, z),  # side
-        (dx, y, dz, dx, y, z, dx, dy, z, dx, dy, dz),  # side
-        (x, dy, dz, dx, dy, dz, dx, dy, z, x, dy, z),  # top
-        (x, y, z, dx, y, z, dx, y, dz, x, y, dz),  # bottom
-        (dx, y, z, x, y, z, x, dy, z, dx, dy, z),  # side
-        (x, y, dz, dx, y, dz, dx, dy, dz, x, dy, dz),  # side
+        np.hstack((a, e, h, d)),  # side
+        np.hstack((b, f, g, c)),  # side
+        np.hstack((d, c, g, h)),  # top
+        np.hstack((b, a, e, f)),  # bottom
+        np.hstack((a, b, c, d)),  # side
+        np.hstack((e, f, g, h)),  # side
     ]
 
 
-class Grass:
+class TagModel:
     textures = make_textures(
-        {"side": "grass_side.png", "top": "grass_top.png", "bottom": "dirt.png"}
+        {
+            "side": "tag51-side.png",
+            "top": "tag51-top.png",
+            "bottom": "tag51-bottom.png",
+        }
     )
 
 
 class Model:
     def __init__(self):
         self.batch = pyglet.graphics.Batch()
-        self.draw_block((0, 0, -1), Grass)
+        self.draw_block((0, 0, 0), (5, 45, 10), TagModel)
 
-    def draw_block(self, position, block):
-        vertices = get_vertices(*position)
+    def draw_block(self, position, rotation, block):
+        vertices = get_vertices(*position, rotation)
         faces = ("left", "right", "top", "bottom", "front", "back")
         for vertex, face in zip(vertices, faces):
             self.batch.add(
@@ -53,12 +77,24 @@ class Model:
                 gl.GL_QUADS,
                 block.textures[face],
                 ("v3f/static", vertex),
-                ("t2f/static", (0, 0, 1, 0, 1, 1, 0, 1)),
+                (
+                    "t2f/static",
+                    (
+                        0,
+                        0,
+                        0.796875,
+                        0,
+                        0.796875,
+                        0.65234375,
+                        0,
+                        0.65234375,
+                    ),
+                ),
             )
 
 
 class Player:
-    def __init__(self, position=(0, 0, 0), rotation=(0, 0)):
+    def __init__(self, position=(0, 0, 1), rotation=(0, 0)):
         self.position = position
         self.rotation = rotation
         self.strafe = [0, 0, 0]  # forward, up, left
@@ -110,22 +146,34 @@ class Window(pyglet.window.Window):
         self.player = Player()
         self.model = Model()
         self.set_exclusive_mouse(True)
+        self.is_pause = False
         pyglet.clock.schedule(self.update)
 
+    def pause(self):
+        self.is_pause = True
+        self.set_exclusive_mouse(False)
+
     def on_mouse_motion(self, x, y, dx, dy):
-        self.player.mouse_motion(dx, dy)
+        if not self.is_pause:
+            self.player.mouse_motion(dx, dy)
+
+    def on_mouse_press(self, x, y, button, modifiers):
+        self.is_pause = False
+        self.set_exclusive_mouse(True)
 
     def on_key_press(self, symbol, modifiers):
         if symbol == window.key.ESCAPE:
+            self.pause()
+        elif symbol == window.key.Q:
             self.close()
         speed = 1
-        if symbol == window.key.L:
+        if symbol == window.key.W:
             self.player.strafe[0] = -speed
-        elif symbol == window.key.N:
-            self.player.strafe[0] = speed
-        elif symbol == window.key.R:
-            self.player.strafe[2] = -speed
         elif symbol == window.key.S:
+            self.player.strafe[0] = speed
+        elif symbol == window.key.A:
+            self.player.strafe[2] = -speed
+        elif symbol == window.key.D:
             self.player.strafe[2] = speed
         elif symbol == window.key.SPACE:
             self.player.strafe[1] = speed
@@ -133,13 +181,13 @@ class Window(pyglet.window.Window):
             self.player.strafe[1] = -speed
 
     def on_key_release(self, symbol, modifiers):
-        if symbol == window.key.L:
+        if symbol == window.key.W:
             self.player.strafe[0] = 0
-        elif symbol == window.key.N:
-            self.player.strafe[0] = 0
-        elif symbol == window.key.R:
-            self.player.strafe[2] = 0
         elif symbol == window.key.S:
+            self.player.strafe[0] = 0
+        elif symbol == window.key.A:
+            self.player.strafe[2] = 0
+        elif symbol == window.key.D:
             self.player.strafe[2] = 0
         elif symbol == window.key.SPACE:
             self.player.strafe[1] = 0
@@ -157,6 +205,7 @@ class Window(pyglet.window.Window):
 
 
 if __name__ == "__main__":
-    Window(width=800, height=480, resizable=True)
-    gl.glClearColor(0.5, 0.7, 1, 1)  # sky color
+    Window(width=800 * 2, height=480 * 2, resizable=True)
+    # gl.glClearColor(0.5, 0.7, 1, 1)  # sky color
+    gl.glClearColor(0, 0, 0, 1)  # black
     pyglet.app.run()
